@@ -50,7 +50,7 @@ class Memory(object):
 
 
 class FullyConvAgent(base_agent.BaseAgent):
-    """A DQN that receives `player_relative` features and takes movements."""
+    """A fully convolutional DQN that receives `player_relative` features and takes movements."""
 
     def __init__(self,
                  learning_rate=FLAGS.learning_rate,
@@ -62,6 +62,8 @@ class FullyConvAgent(base_agent.BaseAgent):
                  target_update_frequency=FLAGS.target_update_frequency,
                  max_memory=FLAGS.max_memory,
                  batch_size=FLAGS.batch_size,
+                 use_lstm=FLAGS.use_lstm,
+                 lstm_size=FLAGS.lstm_size,
                  training=FLAGS.training,
                  indicate_nonrandom_action=FLAGS.indicate_nonrandom_action,
                  save_dir="./checkpoints/",
@@ -81,6 +83,8 @@ class FullyConvAgent(base_agent.BaseAgent):
         # neural net hyperparameters
         self.learning_rate = learning_rate
         self.discount_factor = discount_factor
+        self.use_lstm = use_lstm
+        self.lstm_size = lstm_size
 
         # agent hyperparameters
         self.epsilon_max = epsilon_max
@@ -94,12 +98,17 @@ class FullyConvAgent(base_agent.BaseAgent):
         self.indicate_nonrandom_action = indicate_nonrandom_action
 
         # build network
-        self.save_path = save_dir + ckpt_name + ".ckpt"
+        if self.use_lstm:
+            self.save_path = save_dir + ckpt_name + "_lstm" + ".ckpt"
+        else:
+            self.save_path = save_dir + ckpt_name + ".ckpt"
+
         print("Building models...")
         tf.reset_default_graph()
         self.network = nets.FullyConvNet(
             spatial_dimensions=feature_screen_size,
             learning_rate=self.learning_rate,
+            use_lstm=self.use_lstm,
             save_path=self.save_path,
             summary_path=summary_path)
 
@@ -107,6 +116,8 @@ class FullyConvAgent(base_agent.BaseAgent):
             self.target_net = nets.FullyConvNet(
                 spatial_dimensions=feature_screen_size,
                 learning_rate=self.learning_rate,
+                use_lstm=self.use_lstm,
+                lstm_size=self.lstm_size,
                 name="DQNFullyConvTarget")
 
             # initialize Experience Replay memory buffer
@@ -135,6 +146,8 @@ class FullyConvAgent(base_agent.BaseAgent):
         if self.training:
             self.last_state = None
             self.last_action = None
+            if (self.use_lstm):
+                self.lstm_state = self.network.LSTMCell.zero_state(self.batch_size, dtype=tf.float32)
 
             episode = self.network.global_episode.eval(session=self.sess)
             print("Global training episode:", episode + 1)
@@ -241,9 +254,16 @@ class FullyConvAgent(base_agent.BaseAgent):
         else:
             inputs = np.expand_dims(state, 0)
 
-            q_values = self.sess.run(
-                self.network.spatial_flatten,
-                feed_dict={self.network.screens: inputs})
+            if self.use_lstm:
+                q_values, self.lstm_state = self.sess.run(
+                    [self.network.spatial_flatten, self.network.lstm_next_state],
+                    feed_dict={self.network.inputs: inputs, 
+                    self.network.c : self.lstm_state[0],
+                    self.network.h : self.lstm_state[1]})
+            else:
+                q_values = self.sess.run(
+                    self.network.spatial_flatten,
+                    feed_dict={self.network.inputs: inputs})
 
             max_index = np.argmax(q_values)
             x, y = np.unravel_index(max_index, feature_screen_size)
@@ -266,7 +286,7 @@ class FullyConvAgent(base_agent.BaseAgent):
         # get targets
         next_outputs = self.sess.run(
             self.target_net.spatial_output,
-            feed_dict={self.target_net.screens: next_states})
+            feed_dict={self.target_net.inputs: next_states})
 
         targets = [rewards[i] + self.discount_factor * np.max(next_outputs[i])
                    for i in range(self.batch_size)]

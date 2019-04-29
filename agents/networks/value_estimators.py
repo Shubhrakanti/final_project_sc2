@@ -181,6 +181,10 @@ class FullyConvNet(object):
     def __init__(self,
                  spatial_dimensions,
                  learning_rate,
+                 use_lstm=False,
+                 lstm_size=256,
+                 fc_size=256,
+                 num_actions=1,
                  save_path=None,
                  summary_path=None,
                  name="fullyconv"):
@@ -190,6 +194,10 @@ class FullyConvNet(object):
         self.learning_rate = learning_rate
         self.name = name
         self.save_path = save_path
+        self.use_lstm = use_lstm
+        self.lstm_size = lstm_size
+        self.fc_size = fc_size
+        self.num_actions = num_actions
 
         # build graph
         self._build()
@@ -220,7 +228,7 @@ class FullyConvNet(object):
         global_episode = self.global_episode.eval(session=sess)
         summary = sess.run(
             self.write_op,
-            feed_dict={self.screens: states,
+            feed_dict={self.inputs: states,
                        self.actions: actions,
                        self.targets: targets,
                        self.score: score})
@@ -231,7 +239,7 @@ class FullyConvNet(object):
         """Perform one iteration of gradient updates."""
         loss, _ = sess.run(
             [self.loss, self.optimizer],
-            feed_dict={self.screens: states,
+            feed_dict={self.inputs: states,
                        self.actions: actions,
                        self.targets: targets})
 
@@ -261,22 +269,10 @@ class FullyConvNet(object):
                 name="global_episode")
 
             # placeholders
-            self.screens = tf.placeholder(
+            self.inputs = tf.placeholder(
                 tf.int32,
                 [None, *self.spatial_dimensions],
                 name="screen")
-
-            # minimap is assumed to be same resolution as the screen
-            #self.minimap = tf.placeholder(
-            #   tf.int32,
-            #   [None, *self.spatial_dimensions],
-            #   name="minimap")
-
-            # non spatial features
-            #self.info = tf.placeholder(
-            #   tf.int32,
-            #   [None, <non spatial feature dimensions>],
-            #   name="minimap")
 
             self.actions = tf.placeholder(
                 tf.float32,
@@ -296,7 +292,7 @@ class FullyConvNet(object):
             # spatial coordinates are given in y-major screen coordinate space
             # transpose them to (x, y) space before beginning
             self.transposed = tf.transpose(
-                self.screens,
+                self.inputs,
                 perm=[0, 2, 1],
                 name="transpose")
 
@@ -342,6 +338,9 @@ class FullyConvNet(object):
                 self.conv2,
                 name="conv2_activation")
 
+            self.flattened_conv_output = tf.layers.flatten(self.conv2_activation, name="lstm_input")
+
+
             # spatial output layer
             self.spatial_output = tf.layers.conv2d(
                 inputs=self.conv2_activation,
@@ -353,7 +352,45 @@ class FullyConvNet(object):
 
             self.spatial_flatten = tf.layers.flatten(self.spatial_output, name="flat")
 
+            # LSTM MODULE
+            
+            # lstm state
+            if (self.use_lstm):
 
+                self.lstm_output_size = self.spatial_flatten.shape[1]
+                print("lstm output size ", self.lstm_output_size)
+                print("lstm units ", self.lstm_size)
+
+                self.c = tf.placeholder(
+                tf.float32,
+                [None, self.lstm_output_size],
+                name="c")
+
+                self.h = tf.placeholder(
+                tf.float32,
+                [None, self.lstm_output_size],
+                name="h")
+
+                # TODO: chance to cudunnLSTM for better performance on GPU
+                self.lstm_state = tf.nn.rnn_cell.LSTMStateTuple(self.c, self.h)
+
+                self.LSTMCell = tf.nn.rnn_cell.LSTMCell(self.lstm_output_size)
+
+                self.spatial_flatten, self.lstm_next_state = self.LSTMCell(self.spatial_flatten, self.lstm_state)
+
+
+            # to determine which action to take
+            # TODO: make units modular
+            #self.fc1 = tf.layers.dense(
+            #    inputs=self.spatial_flatten,
+            #    units=self.fc_size,
+            #    activation=tf.nn.relu,
+            #    name="fc1")
+
+            #self.actions_dist = tf.layers.dense(
+            #    inputs=self.fc1,
+            #    units=self.num_actions,
+            #    name="actions_dist")
 
             # value estimate trackers for summaries
             self.max_q = tf.reduce_max(self.spatial_flatten, name="max")
@@ -372,3 +409,5 @@ class FullyConvNet(object):
             self.optimizer = tf.train.RMSPropOptimizer(
                 self.learning_rate).minimize(self.loss,
                                              global_step=self.global_step)
+
+
