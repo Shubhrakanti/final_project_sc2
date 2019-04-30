@@ -22,17 +22,44 @@ feature_minimap_size = FLAGS.feature_minimap_size
 # pysc2 convenience
 FUNCTIONS = sc2_actions.FUNCTIONS
 
+class Episode(object):
+    """Wrapper for one episode. Stores state/action/next_state/reward to be sampled as sequences."""
+    def __init__(self):
+        """Store one list of states and then state indices to avoid storing states twice."""
+        self.states = []
+        self.experiences = []
+        self.length = 0
 
-class Memory(object):
+    def add_experience(state, action, next_state, reward):
+        """Add experience to episode."""
+        self.experiences.append((self.length - 1, action, reward, self.length))
+        self.states.append(next_state)
+        self.length += 1
+
+    def sample_sequence(seq_length):
+        """Returns array of (state, action, next_state, reward) tuples."""
+        start_idx = np.randint(0, self.length - seq_length)
+        res = []
+        for i in range(start_idx, start_idx + seq_length):
+            exp = self.experiences[i]
+            state = self.states[exp[0]]
+            action = exp[1]
+            reward = exp[2]
+            next_state = self.states[exp[3]]
+            res.append((state, action, reward, next_state))
+        return np.array(res)
+
+class SequenceMemory(object):
     """Memory buffer for Experience Replay."""
 
-    def __init__(self, max_size):
+    def __init__(self, max_size, seq_length):
         """Initialize a buffer containing max_size experiences."""
         self.buffer = deque(maxlen=max_size)
+        self.seq_length = seq_length
 
-    def add(self, experience):
+    def add(self, episode):
         """Add an experience to the buffer."""
-        self.buffer.append(experience)
+        self.buffer.append(episode)
 
     def sample(self, batch_size):
         """Sample a batch of experiences from the buffer."""
@@ -40,15 +67,16 @@ class Memory(object):
         index = np.random.choice(
             np.arange(buffer_size),
             size=batch_size,
-            replace=False)
+            replace=True)
 
-        return [self.buffer[i] for i in index]
+        return [self.buffer[i].sample_sequence(self.seq_length) for i in index]
 
     def __len__(self):
         """Interface to access buffer length."""
         return len(self.buffer)
 
-class FullyConvAgent(base_agent.BaseAgent):
+
+class ConvLstmAgent(base_agent.BaseAgent):
     """A fully convolutional DQN that receives `player_relative` features and takes movements."""
 
     def __init__(self,
@@ -61,13 +89,14 @@ class FullyConvAgent(base_agent.BaseAgent):
                  target_update_frequency=FLAGS.target_update_frequency,
                  max_memory=FLAGS.max_memory,
                  batch_size=FLAGS.batch_size,
+                 seq_length=FLAGS.seq_length,
                  training=FLAGS.training,
                  indicate_nonrandom_action=FLAGS.indicate_nonrandom_action,
                  save_dir="./checkpoints/",
-                 ckpt_name="DQNFullyConvMoveOnly",
-                 summary_path="./tensorboard/DQNfullyconv"):
+                 ckpt_name="DQNConvLstmMoveOnly",
+                 summary_path="./tensorboard/DQNConvLstm"):
         """Initialize rewards/episodes/steps, build network."""
-        super(FullyConvAgent, self).__init__()
+        super(ConvLstmAgent, self).__init__()
 
         # saving and summary writing
         if FLAGS.save_dir:
@@ -80,6 +109,8 @@ class FullyConvAgent(base_agent.BaseAgent):
         # neural net hyperparameters
         self.learning_rate = learning_rate
         self.discount_factor = discount_factor
+        self.seq_length = seq_length
+        self.batch_size = batch_size
 
         # agent hyperparameters
         self.epsilon_max = epsilon_max
@@ -97,20 +128,24 @@ class FullyConvAgent(base_agent.BaseAgent):
 
         print("Building models...")
         tf.reset_default_graph()
-        self.network = nets.FullyConvNet(
+        self.network = nets.ConvLstmNet(
             spatial_dimensions=feature_screen_size,
             learning_rate=self.learning_rate,
+            seq_length=self.seq_length,
+            batch_size=self.batch_size,
             save_path=self.save_path,
             summary_path=summary_path)
 
         if self.training:
-            self.target_net = nets.FullyConvNet(
+            self.target_net = nets.ConvLstmNet(
                 spatial_dimensions=feature_screen_size,
                 learning_rate=self.learning_rate,
-                name="DQNFullyConvTarget")
+                seq_length=self.seq_length,
+                batch_size=self.batch_size,
+                name="DQNConvLstmTarget")
 
             # initialize Experience Replay memory buffer
-            self.memory = Memory(max_memory)
+            self.memory = SequenceMemory(max_memory, self.seq_length)
             self.batch_size = batch_size
 
         print("Done.")
@@ -135,6 +170,8 @@ class FullyConvAgent(base_agent.BaseAgent):
         if self.training:
             self.last_state = None
             self.last_action = None
+            self.current_episode = Episode()
+
             episode = self.network.global_episode.eval(session=self.sess)
             print("Global training episode:", episode + 1)
 
@@ -148,11 +185,11 @@ class FullyConvAgent(base_agent.BaseAgent):
             self._handle_episode_end()
 
         if FUNCTIONS.Move_screen.id in obs.observation.available_actions:
-            screen = obs.observation.feature_screen.player_relative
+            state = obs.observation.feature_screen.player_relative
 
             if self.training:
                 # predict an action to take and take it
-                x, y, action = self._epsilon_greedy_action_selection(screen)
+                x, y, action = self._epsilon_greedy_action_selection(state)
 
                 # update online DQN
                 if (self.steps % self.train_frequency == 0 and
@@ -166,13 +203,13 @@ class FullyConvAgent(base_agent.BaseAgent):
 
                 # add experience to memory
                 if self.last_state is not None:
-                    self.memory.add(
-                        (self.last_state,
+                    self.current_episode.add(
+                         self.last_state,
                          self.last_action,
                          obs.reward,
-                         screen))
+                         state)
 
-                self.last_state = screen
+                self.last_state = state
                 self.last_action = np.ravel_multi_index(
                     (x, y),
                     feature_screen_size)
@@ -211,9 +248,9 @@ class FullyConvAgent(base_agent.BaseAgent):
 
     def _update_target_network(self):
         online_vars = tf.get_collection(
-            tf.GraphKeys.TRAINABLE_VARIABLES, "fullyconv")
+            tf.GraphKeys.TRAINABLE_VARIABLES, "ConvLstm")
         target_vars = tf.get_collection(
-            tf.GraphKeys.TRAINABLE_VARIABLES, "DQNFullyConvTarget")
+            tf.GraphKeys.TRAINABLE_VARIABLES, "DQNConvLstmTarget")
 
         update_op = []
         for online_var, target_var in zip(online_vars, target_vars):
@@ -239,9 +276,8 @@ class FullyConvAgent(base_agent.BaseAgent):
 
         else:
             inputs = np.expand_dims(state, 0)
-
             q_values = self.sess.run(
-                    self.network.spatial_flatten,
+                    self.network.outputs,
                     feed_dict={self.network.inputs: inputs})
 
             max_index = np.argmax(q_values)
@@ -264,7 +300,7 @@ class FullyConvAgent(base_agent.BaseAgent):
 
         # get targets
         next_outputs = self.sess.run(
-            self.target_net.spatial_output,
+            self.target_net.outputs,
             feed_dict={self.target_net.inputs: next_states})
 
         targets = [rewards[i] + self.discount_factor * np.max(next_outputs[i])

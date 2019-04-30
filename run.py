@@ -94,8 +94,7 @@ flags.DEFINE_integer("batch_size", 16, "Training batch size.")
 flags.DEFINE_bool("indicate_nonrandom_action", False, "Show nonrandom actions.")
 
 # Fully conv / conv-lstm
-flags.DEFINE_bool("use_lstm", False, "Whether to use fully conv or conv-lstm.")
-flags.DEFINE_integer("lstm_size", 256, "Size of lstm cell (c).")
+flags.DEFINE_integer("seq_length", 8, "Length of replay sequence when using an lstm.")
 # A2CAtari
 flags.DEFINE_integer("trajectory_training_steps", 40, "When to cut trajectory and train network.")
 flags.DEFINE_float("value_gradient_strength", 0.5, "Scaling parameter for value estimation gradient.")
