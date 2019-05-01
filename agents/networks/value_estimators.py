@@ -791,7 +791,7 @@ class FullyConvNetExpandedActionSpace(object):
                  learning_rate,
                  save_path=None,
                  summary_path=None,
-                 name="fullyconvexpanded"):
+                 name="dqnfullyconvexpanded"):
 
         """Initialize instance-specific hyperparameters, build tf graph."""
         self.spatial_dimensions = spatial_dimensions

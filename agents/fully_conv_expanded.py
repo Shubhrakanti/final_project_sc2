@@ -64,7 +64,7 @@ class FullyConvExpandedAgent(base_agent.BaseAgent):
                  training=FLAGS.training,
                  indicate_nonrandom_action=FLAGS.indicate_nonrandom_action,
                  save_dir="./checkpoints/",
-                 ckpt_name="DQNFullyConvExpandedActionSpace",
+                 ckpt_name="DQNFullyConvExpanded",
                  summary_path="./tensorboard/DQNfullyconvexpanded"):
         """Initialize rewards/episodes/steps, build network."""
         super(FullyConvExpandedAgent, self).__init__()
@@ -107,7 +107,7 @@ class FullyConvExpandedAgent(base_agent.BaseAgent):
             self.target_net = nets.FullyConvNetExpandedActionSpace(
                 spatial_dimensions=feature_screen_size,
                 learning_rate=self.learning_rate,
-                name="DQNFullyConvExpandedTarget")
+                name="DQNFullyConvExpandedSpaceTarget")
 
             # initialize Experience Replay memory buffer
             self.memory = Memory(max_memory)
@@ -213,7 +213,7 @@ class FullyConvExpandedAgent(base_agent.BaseAgent):
 
     def _update_target_network(self):
         online_vars = tf.get_collection(
-            tf.GraphKeys.TRAINABLE_VARIABLES, "fullyconvexpanded")
+            tf.GraphKeys.TRAINABLE_VARIABLES, "dqnfullyconvexpanded")
         target_vars = tf.get_collection(
             tf.GraphKeys.TRAINABLE_VARIABLES, "DQNFullyConvExpandedTarget")
 
