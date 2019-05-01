@@ -20,7 +20,10 @@ feature_screen_size = FLAGS.feature_screen_size
 feature_minimap_size = FLAGS.feature_minimap_size
 
 # pysc2 convenience
+AVAILABLE_ACTIONS = [0, 2, 5, 12]
+
 FUNCTIONS = sc2_actions.FUNCTIONS
+
 FUNCTION_TYPES = sc2_actions.FUNCTION_TYPES
 FunctionCall = sc2_actions.FunctionCall
 
@@ -115,6 +118,12 @@ class A2CAtari(base_agent.BaseAgent):
         minimap_features = observation.feature_minimap
         flat_features = observation.player
         available_actions = observation.available_actions
+
+        #print(available_actions)
+
+        # mask out actions not allowed
+        #available_actions  = [action for action in available_actions if action in AVAILABLE_ACTIONS]
+        #print(available_actions)
 
         # sample action (function identifier and arguments) from policy
         action_id, args, arg_types = self._sample_action(

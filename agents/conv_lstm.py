@@ -30,13 +30,13 @@ class Episode(object):
         self.experiences = []
         self.length = 0
 
-    def add_experience(state, action, next_state, reward):
+    def add_experience(self, state, action, next_state, reward):
         """Add experience to episode."""
         self.experiences.append((self.length - 1, action, reward, self.length))
         self.states.append(next_state)
         self.length += 1
 
-    def sample_sequence(seq_length):
+    def sample_sequence(self, seq_length):
         """Returns array of (state, action, next_state, reward) tuples."""
         start_idx = np.randint(0, self.length - seq_length)
         res = []
@@ -203,11 +203,11 @@ class ConvLstmAgent(base_agent.BaseAgent):
 
                 # add experience to memory
                 if self.last_state is not None:
-                    self.current_episode.add(
+                    self.current_episode.add_experience(
                          self.last_state,
                          self.last_action,
-                         obs.reward,
-                         state)
+                         state,
+                         obs.reward)
 
                 self.last_state = state
                 self.last_action = np.ravel_multi_index(
@@ -276,12 +276,16 @@ class ConvLstmAgent(base_agent.BaseAgent):
 
         else:
             inputs = np.expand_dims(state, 0)
-            q_values = self.sess.run(
+            #q_values = self.sess.run(
+            #        self.network.outputs,
+            #        feed_dict={self.network.inputs: inputs})
+            outputs = self.sess.run(
                     self.network.outputs,
                     feed_dict={self.network.inputs: inputs})
 
-            max_index = np.argmax(q_values)
-            x, y = np.unravel_index(max_index, feature_screen_size)
+            #max_index = np.argmax(q_values)
+            #x, y = np.unravel_index(max_index, feature_screen_size)
+            x, y = outputs
             return x, y, "nonrandom"
 
     def _train_network(self):

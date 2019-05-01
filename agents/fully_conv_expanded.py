@@ -48,7 +48,7 @@ class Memory(object):
         """Interface to access buffer length."""
         return len(self.buffer)
 
-class FullyConvAgent(base_agent.BaseAgent):
+class FullyConvExpandedAgent(base_agent.BaseAgent):
     """A fully convolutional DQN that receives `player_relative` features and takes movements."""
 
     def __init__(self,
@@ -64,10 +64,10 @@ class FullyConvAgent(base_agent.BaseAgent):
                  training=FLAGS.training,
                  indicate_nonrandom_action=FLAGS.indicate_nonrandom_action,
                  save_dir="./checkpoints/",
-                 ckpt_name="DQNFullyConvMoveOnly",
-                 summary_path="./tensorboard/DQNfullyconv"):
+                 ckpt_name="DQNFullyConvExpandedActionSpace",
+                 summary_path="./tensorboard/DQNfullyconvexpanded"):
         """Initialize rewards/episodes/steps, build network."""
-        super(FullyConvAgent, self).__init__()
+        super(FullyConvExpandedAgent, self).__init__()
 
         # saving and summary writing
         if FLAGS.save_dir:
@@ -97,17 +97,17 @@ class FullyConvAgent(base_agent.BaseAgent):
 
         print("Building models...")
         tf.reset_default_graph()
-        self.network = nets.FullyConvNet(
+        self.network = nets.FullyConvNetExpandedActionSpace(
             spatial_dimensions=feature_screen_size,
             learning_rate=self.learning_rate,
             save_path=self.save_path,
             summary_path=summary_path)
 
         if self.training:
-            self.target_net = nets.FullyConvNet(
+            self.target_net = nets.FullyConvNetExpandedActionSpace(
                 spatial_dimensions=feature_screen_size,
                 learning_rate=self.learning_rate,
-                name="DQNFullyConvTarget")
+                name="DQNFullyConvExpandedTarget")
 
             # initialize Experience Replay memory buffer
             self.memory = Memory(max_memory)
@@ -117,6 +117,7 @@ class FullyConvAgent(base_agent.BaseAgent):
 
         self.last_state = None
         self.last_action = None
+        self.last_action_type = None
 
         # initialize session
         self.sess = tf.Session()
@@ -147,50 +148,49 @@ class FullyConvAgent(base_agent.BaseAgent):
         if self.training and obs.step_type == 2:
             self._handle_episode_end()
 
-        if FUNCTIONS.Move_screen.id in obs.observation.available_actions:
-            screen = obs.observation.feature_screen.player_relative
+        screen = obs.observation.feature_screen.player_relative
 
-            if self.training:
-                # predict an action to take and take it
-                x, y, action = self._epsilon_greedy_action_selection(screen)
+        if self.training:
+            # predict an action to take and take it
+            x, y, size, action = self._epsilon_greedy_action_selection(screen)
 
-                # update online DQN
-                if (self.steps % self.train_frequency == 0 and
-                        len(self.memory) > self.batch_size):
-                    self._train_network()
+            # update online DQN
+            if (self.steps % self.train_frequency == 0 and
+                    len(self.memory) > self.batch_size):
+                self._train_network()
 
-                # update network used to estimate TD targets
-                if self.steps % self.target_update_frequency == 0:
-                    self._update_target_network()
-                    print("Target network updated.")
+            # update network used to estimate TD targets
+            if self.steps % self.target_update_frequency == 0:
+                self._update_target_network()
+                print("Target network updated.")
 
-                # add experience to memory
-                if self.last_state is not None:
-                    self.memory.add(
+            # add experience to memory
+            if self.last_state is not None:
+                self.memory.add(
                         (self.last_state,
                          self.last_action,
+                         self.last_action_type,
                          obs.reward,
                          screen))
 
-                self.last_state = screen
-                self.last_action = np.ravel_multi_index(
-                    (x, y),
-                    feature_screen_size)
+            self.last_state = screen
+            self.last_action = np.ravel_multi_index(
+                (x, y),
+                feature_screen_size)
+            self.last_action_type = action
 
-            else:
-                x, y, action = self._epsilon_greedy_action_selection(
+        else:
+            x, y, size, action = self._epsilon_greedy_action_selection(
                     screen,
                     self.epsilon_min)
 
-            if self.indicate_nonrandom_action and action == "nonrandom":
-                # cosmetic difference between random and Q based actions
-                return FUNCTIONS.Attack_screen("now", (x, y))
-            else:
-                return FUNCTIONS.Move_screen("now", (x, y))
+        if action == 0 and 12 in obs.observation.available_actions:
+            return FUNCTIONS.Attack_screen("now", (x, y))
         else:
-            return FUNCTIONS.select_army("select")
-            #rint(obs.observation.available_actions)
-            #return FUNCTIONS.select_rect("select", [np.random.randint(0, 85), np.random.randint(0, 85)], [np.random.randint(0, 85), np.random.randint(0, 85)])
+            #h = 30
+            #w = 30
+            return FUNCTIONS.select_rect("select", (x, y), (min(x+size, 83), min(y+size, 83)))
+
 
     def _handle_episode_end(self):
         """Save weights and write summaries."""
@@ -202,9 +202,9 @@ class FullyConvAgent(base_agent.BaseAgent):
         print("Model Saved")
 
         # write summaries from last episode
-        states, actions, targets = self._get_batch()
+        states, actions, action_types, targets = self._get_batch()
         self.network.write_summary(
-            self.sess, states, actions, targets, self.reward)
+            self.sess, states, actions, action_types, targets, self.reward)
         print("Summary Written")
 
     def _tf_init_op(self):
@@ -213,9 +213,9 @@ class FullyConvAgent(base_agent.BaseAgent):
 
     def _update_target_network(self):
         online_vars = tf.get_collection(
-            tf.GraphKeys.TRAINABLE_VARIABLES, "fullyconv")
+            tf.GraphKeys.TRAINABLE_VARIABLES, "fullyconvexpanded")
         target_vars = tf.get_collection(
-            tf.GraphKeys.TRAINABLE_VARIABLES, "DQNFullyConvTarget")
+            tf.GraphKeys.TRAINABLE_VARIABLES, "DQNFullyConvExpandedTarget")
 
         update_op = []
         for online_var, target_var in zip(online_vars, target_vars):
@@ -236,40 +236,42 @@ class FullyConvAgent(base_agent.BaseAgent):
         if epsilon > np.random.rand():
             x = np.random.randint(0, feature_screen_size[0])
             y = np.random.randint(0, feature_screen_size[1])
+            action = np.random.randint(2)
 
-            return x, y, "random"
+            return x, y, action
 
         else:
             inputs = np.expand_dims(state, 0)
 
-            q_values = self.sess.run(
-                    self.network.spatial_flatten,
+            action_type, max_index, size = self.sess.run(
+                    [self.network.best_action_type, self.network.best_action, self.box_size],
                     feed_dict={self.network.inputs: inputs})
 
-            max_index = np.argmax(q_values)
             x, y = np.unravel_index(max_index, feature_screen_size)
-            return x, y, "nonrandom"
+            return x, y, size, action_type
 
     def _train_network(self):
-        states, actions, targets = self._get_batch()
-        self.network.optimizer_op(self.sess, states, actions, targets)
+        states, actions, action_types, targets = self._get_batch()
+        self.network.optimizer_op(self.sess, states, actions, action_types, targets)
 
     def _get_batch(self):
         batch = self.memory.sample(self.batch_size)
         states = np.array([each[0] for each in batch])
-        actions = np.array([each[1] for each in batch])
-        rewards = np.array([each[2] for each in batch])
-        next_states = np.array([each[3] for each in batch])
+        actions = np.array([int(each[1]) for each in batch])
+        action_types = np.array([each[2] for each in batch])
+        rewards = np.array([each[3] for each in batch])
+        next_states = np.array([each[4] for each in batch])
 
         # one-hot encode actions
         actions = np.eye(np.prod(feature_screen_size))[actions]
 
         # get targets
         next_outputs = self.sess.run(
-            self.target_net.spatial_output,
-            feed_dict={self.target_net.inputs: next_states})
+            self.target_net.best_values,
+            feed_dict={self.target_net.inputs: next_states,
+                        self.target_net.action_type : action_types})
 
-        targets = [rewards[i] + self.discount_factor * np.max(next_outputs[i])
+        targets = [rewards[i] + self.discount_factor * next_outputs[i]#np.max(next_outputs[i])
                    for i in range(self.batch_size)]
 
-        return states, actions, targets
+        return states, actions, action_types, targets
