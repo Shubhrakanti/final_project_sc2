@@ -138,18 +138,17 @@ class PlayerRelativeMovementCNNStackedFrames(object):
 
             self.embed = tf.layers.conv2d(
                 inputs=self.seq_removed,
-                filters=5,
+                filters=self.sequence_length,
                 kernel_size=[1, 1],
                 strides=[1, 1],
                 padding="SAME",
                 name="embed")
 
-
-            # convolutional layer
+            # convolutional layer 1
             self.conv1 = tf.layers.conv2d(
                 inputs=self.embed,
                 filters=16,
-                kernel_size=[3, 3],
+                kernel_size=[5, 5],
                 strides=[1, 1],
                 padding="SAME",
                 name="conv1")
@@ -158,9 +157,22 @@ class PlayerRelativeMovementCNNStackedFrames(object):
                 self.conv1,
                 name="conv1_activation")
 
+            # convolutional layer 2
+            self.conv2 = tf.layers.conv2d(
+                inputs=self.conv1_activation,
+                filters=32,
+                kernel_size=[3, 3],
+                strides=[1, 1],
+                padding="SAME",
+                name="conv2")
+
+            self.conv2_activation = tf.nn.relu(
+                self.conv2,
+                name="conv2_activation")
+
             # spatial output layer
             self.output = tf.layers.conv2d(
-                inputs=self.conv1_activation,
+                inputs=self.conv2_activation,
                 filters=1,
                 kernel_size=[1, 1],
                 strides=[1, 1],
