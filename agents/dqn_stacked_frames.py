@@ -75,9 +75,9 @@ class DQNStackedFrames(base_agent.BaseAgent):
         if FLAGS.save_dir:
             save_dir = FLAGS.save_dir
         if FLAGS.ckpt_name:
-            ckpt_name = FLAGS.ckpt_name
+            ckpt_name = FLAGS.ckpt_name 
         if FLAGS.summary_path:
-            summary_path = FLAGS.summary_path
+            summary_path = FLAGS.summary_path+ str(sequence_length)
 
         # neural net hyperparameters
         self.learning_rate = learning_rate
@@ -96,7 +96,7 @@ class DQNStackedFrames(base_agent.BaseAgent):
         self.indicate_nonrandom_action = indicate_nonrandom_action
 
         # build network
-        self.save_path = save_dir + ckpt_name + ".ckpt"
+        self.save_path = save_dir + ckpt_name + str(sequence_length)+ ".ckpt"
         print("Building models...")
         tf.reset_default_graph()
         self.network = nets.PlayerRelativeMovementCNNStackedFrames(

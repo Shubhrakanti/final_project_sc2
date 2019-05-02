@@ -100,7 +100,8 @@ flags.DEFINE_integer("sequence_length", 4, "Length of sequence for stacked frame
 flags.DEFINE_integer("trajectory_training_steps", 40, "When to cut trajectory and train network.")
 flags.DEFINE_float("value_gradient_strength", 0.5, "Scaling parameter for value estimation gradient.")
 flags.DEFINE_float("regularization_strength", 0.01, "Scaling parameter for entropy regularization.")
-
+# Skipframes deep q
+flags.DEFINE_integer("skip_frame", 4, "How many frames to skip before recording into exp replay.")
 
 def run_thread(agent_classes, players, map_name, visualize):
     """Run one thread worth of the environment with agents."""
