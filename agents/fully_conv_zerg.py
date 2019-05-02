@@ -153,8 +153,8 @@ class FullyConvAgent(base_agent.BaseAgent):
         # handle end of episode if terminal step
         if self.training and obs.step_type == 2:
             self._handle_episode_end()
-        marinecount= obs.observation.player_common.army_count
-        if FUNCTIONS.Move_screen.id in obs.observation.available_actions and marinecount > 0 and FUNCTIONS.Attack_screen.id in obs.observation.available_actions:
+        #marinecount= obs.observation.player_common.army_count
+        if FUNCTIONS.Move_screen.id in obs.observation.available_actions and FUNCTIONS.Attack_screen.id in obs.observation.available_actions:
             screen = obs.observation.feature_screen.player_relative
 
             if self.training:
@@ -181,8 +181,7 @@ class FullyConvAgent(base_agent.BaseAgent):
 
                 self.last_state = screen
                 self.last_action = np.ravel_multi_index(
-                    (x, y), action, 
-                    feature_screen_size)
+                    (x, y), feature_screen_size) # figure out how to add action to memory
 
             else:
                 x, y, action, eps = self._epsilon_greedy_action_selection(
@@ -263,7 +262,7 @@ class FullyConvAgent(base_agent.BaseAgent):
             attack_max_index = np.argmax(q_values_attack)
 
             
-            if move_max_index<attack:
+            if move_max_index<attack_max_index:
                 action = "Attack"
                 x, y = np.unravel_index(attack_max_index, feature_screen_size)
 
@@ -288,10 +287,14 @@ class FullyConvAgent(base_agent.BaseAgent):
         actions = np.eye(np.prod(feature_screen_size))[actions]
 
         # get targets
-        next_outputs = self.sess.run(
-            self.target_net.spatial_output,
+        next_outputs_move = self.sess.run(
+            self.target_net.spatial_output_move,
             feed_dict={self.target_net.inputs: next_states})
 
+        next_outputs_attack = self.sess.run(
+                    self.target_net.spatial_output_attack,
+                    feed_dict={self.target_net.inputs: next_states})
+        next_outputs = next_outputs_move+next_outputs_attack
         targets = [rewards[i] + self.discount_factor * np.max(next_outputs[i])
                    for i in range(self.batch_size)]
 

@@ -722,7 +722,7 @@ class FullyConvNetZerg(object):
                 kernel_size=[1, 1],
                 strides=[1, 1],
                 padding="SAME",
-                name="spatial_output")
+                name="spatial_output_move")
             
             self.spatial_output_attack = tf.layers.conv2d(
                 inputs=self.conv2_activation,
@@ -730,7 +730,7 @@ class FullyConvNetZerg(object):
                 kernel_size=[1, 1],
                 strides=[1, 1],
                 padding="SAME",
-                name="spatial_output")
+                name="spatial_output_attack")
 
             self.spatial_flatten_move = tf.layers.flatten(self.spatial_output_move, name="flat")
             self.spatial_flatten_attack = tf.layers.flatten(self.spatial_output_attack, name="flat")
