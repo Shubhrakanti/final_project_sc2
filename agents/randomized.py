@@ -20,7 +20,6 @@ class QueueRandomMovements(base_agent.BaseAgent):
     def step(self, obs):
         """If no units selected, selects army, otherwise moves randomly."""
         super(QueueRandomMovements, self).step(obs)
-
         if FUNCTIONS.Move_screen.id in obs.observation.available_actions:
             x = np.random.randint(0, feature_screen_size[0])
             y = np.random.randint(0, feature_screen_size[1])

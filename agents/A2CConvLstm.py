@@ -35,7 +35,7 @@ SCREEN_TYPES = [sc2_actions.TYPES[0], sc2_actions.TYPES[2]]
 MINIMAP_TYPES = [sc2_actions.TYPES[1]]
 
 
-class A2CAtariSimplified(base_agent.BaseAgent):
+class A2CConvLstmAgent(base_agent.BaseAgent):
     """Synchronous version of DeepMind baseline Advantage actor-critic."""
 
     def __init__(self,
@@ -46,10 +46,10 @@ class A2CAtariSimplified(base_agent.BaseAgent):
                  trajectory_training_steps=FLAGS.trajectory_training_steps,
                  training=FLAGS.training,
                  save_dir="./checkpoints/",
-                 ckpt_name="A2CAtariSimplified",
-                 summary_path="./tensorboard/A2CAtariSimplified"):
+                 ckpt_name="A2CConvLstm",
+                 summary_path="./tensorboard/A2CConvLstm"):
         """Initialize rewards/episodes/steps, build network."""
-        super(A2CAtariSimplified, self).__init__()
+        super(A2CConvLstmAgent, self).__init__()
 
         # saving and summary writing
         if FLAGS.save_dir:
@@ -73,11 +73,10 @@ class A2CAtariSimplified(base_agent.BaseAgent):
         self.save_path = save_dir + ckpt_name + ".ckpt"
         print("Building models...")
         tf.reset_default_graph()
-        self.network = nets.AtariNetSimplified(
+        self.network = nets.ConvLstmNet(
             screen_dimensions=feature_screen_size,
             learning_rate=learning_rate,
             value_gradient_strength=value_gradient_strength,
-            regularization_strength=regularization_strength,
             save_path=self.save_path,
             summary_path=summary_path)
 
@@ -95,6 +94,7 @@ class A2CAtariSimplified(base_agent.BaseAgent):
         self.episodes += 1
         self.steps = 0
         self.reward = 0
+        self.lstm_state = (np.zeros((1, 256)), np.zeros((1, 256)))
 
         if self.training:
             self.last_action = None
@@ -102,6 +102,7 @@ class A2CAtariSimplified(base_agent.BaseAgent):
             self.action_buffer = deque(maxlen=self.trajectory_training_steps)
             self.reward_buffer = deque(maxlen=self.trajectory_training_steps)
             self.glob_ep = self.network.global_episode.eval(session=self.sess)
+            self.lstm_state_buffer = deque(maxlen=self.trajectory_training_steps)
             print("Global training episode:", self.glob_ep + 1)
 
     def step(self, obs):
@@ -121,7 +122,7 @@ class A2CAtariSimplified(base_agent.BaseAgent):
 
 
         # sample action (function identifier and arguments) from policy
-        args = self._sample_action(
+        args, lstm_next_state = self._sample_action(
             screen_features,
             available_actions)
 
@@ -136,12 +137,14 @@ class A2CAtariSimplified(base_agent.BaseAgent):
                 self.state_buffer.appendleft((screen_features))
                 self.action_buffer.appendleft(self.last_action)
                 self.reward_buffer.appendleft(obs.reward)
+                self.lstm_state_buffer.appendleft(lstm_next_state)
 
             # cut trajectory and train model
             if self.steps % self.trajectory_training_steps == 0:
                 self._train_network()
 
             self.last_action = args
+            self.lstm_state = lstm_next_state
 
         return FUNCTIONS.Attack_screen("now", args)
 
@@ -159,19 +162,17 @@ class A2CAtariSimplified(base_agent.BaseAgent):
             else:
                 action_mask[i] = 0
 
-        feed_dict = {self.network.screen_features: screen_features}
+        feed_dict = {self.network.screen_features: screen_features,
+                    self.network.c : self.lstm_state[0],
+                     self.network.h : self.lstm_state[1]}
 
         # sample function identifier
         action_id = 12
 
         # sample function arguments
 
-        x_policy = self.sess.run(
-                    self.network.x,
-                    feed_dict=feed_dict)
-
-        y_policy = self.sess.run(
-                    self.network.y,
+        x_policy, y_policy, lstm_next_state = self.sess.run(
+                    [self.network.x, self.network.y, self.network.lstm_next_state],
                     feed_dict=feed_dict)
 
         x_policy = np.squeeze(x_policy)
@@ -184,8 +185,9 @@ class A2CAtariSimplified(base_agent.BaseAgent):
         args = (x, y)
 
 
+
         #print("CHOSEN ACTION: ", str(action_id), str(args))
-        return args
+        return args, lstm_next_state
 
     def _handle_episode_end(self):
         """Save weights and write summaries."""
@@ -221,6 +223,8 @@ class A2CAtariSimplified(base_agent.BaseAgent):
         actions = [each[0] for each in self.action_buffer]
         actions = np.eye(len(FUNCTIONS))[actions]  # one-hot encode actions
 
+        lstm_states = [i for i in self.lstm_state_buffer]
+
         args = self.action_buffer
         x = np.eye(84)[[a[0] for a in args]]
         y = np.eye(84)[[a[1] for a in args]]
@@ -232,7 +236,9 @@ class A2CAtariSimplified(base_agent.BaseAgent):
         else:
             value = np.squeeze(self.sess.run(
                 self.network.value_estimate,
-                feed_dict={self.network.screen_features: screen[-1:]}))
+                feed_dict={self.network.screen_features: screen[-1:],
+                self.network.c : lstm_states[-1][0],
+                self.network.h : lstm_states[-1][1]}))
 
         returns = []
         # n-step discounted rewards from 1 < n < trajectory_training_steps
@@ -244,6 +250,8 @@ class A2CAtariSimplified(base_agent.BaseAgent):
                      self.network.actions: actions,
                      self.network.returns: returns,
                      self.network.arg_placeholder_x : x,
-                     self.network.arg_placeholder_y : y}
+                     self.network.arg_placeholder_y : y,
+                     self.network.c : [i[0].reshape((256))  for i in lstm_states],
+                     self.network.h : [i[1].reshape((256)) for i in lstm_states]}
 
         return feed_dict
