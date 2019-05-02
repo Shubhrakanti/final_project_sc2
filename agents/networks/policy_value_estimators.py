@@ -1,7 +1,6 @@
 """Neural networks that output both value and optimal policy estimations."""
 import tensorflow as tf
 
-from agents.networks.preprocessing import preprocess_spatial_features
 
 from pysc2.lib import actions, features
 

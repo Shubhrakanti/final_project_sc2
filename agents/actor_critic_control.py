@@ -12,6 +12,9 @@ from collections import deque
 
 from pysc2.agents import base_agent
 from pysc2.lib import actions as sc2_actions
+from pysc2.lib import features
+
+_PLAYER_SELF = features.PlayerRelative.SELF
 
 FLAGS = flags.FLAGS
 
@@ -141,8 +144,7 @@ class A2CAtariControl(base_agent.BaseAgent):
             self.last_action = (args1, args2)
 
 
-        marines = [unit for unit in obs.observation.feature_units
-               if unit.alliance == _PLAYER_SELF]
+        marines = [unit for unit in obs.observation.feature_units if unit.alliance == _PLAYER_SELF]
         if not marines:
             return FUNCTIONS.no_op()
         marine_unit = next((m for m in marines if m.is_selected == self._marine_selected), marines[0])
