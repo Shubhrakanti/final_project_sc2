@@ -35,7 +35,7 @@ SCREEN_TYPES = [sc2_actions.TYPES[0], sc2_actions.TYPES[2]]
 MINIMAP_TYPES = [sc2_actions.TYPES[1]]
 
 
-class A2CAtariSimplified(base_agent.BaseAgent):
+class A2CAtariControl(base_agent.BaseAgent):
     """Synchronous version of DeepMind baseline Advantage actor-critic."""
 
     def __init__(self,
@@ -45,10 +45,10 @@ class A2CAtariSimplified(base_agent.BaseAgent):
                  trajectory_training_steps=FLAGS.trajectory_training_steps,
                  training=FLAGS.training,
                  save_dir="./checkpoints/",
-                 ckpt_name="A2CAtariSimplified",
-                 summary_path="./tensorboard/A2CAtariSimplified"):
+                 ckpt_name="A2CAtariControl",
+                 summary_path="./tensorboard/A2CAtariControl"):
         """Initialize rewards/episodes/steps, build network."""
-        super(A2CAtariSimplified, self).__init__()
+        super(A2CAtariControl, self).__init__()
 
         # saving and summary writing
         if FLAGS.save_dir:
@@ -72,7 +72,7 @@ class A2CAtariSimplified(base_agent.BaseAgent):
         self.save_path = save_dir + ckpt_name + ".ckpt"
         print("Building models...")
         tf.reset_default_graph()
-        self.network = nets.AtariNetSimplified(
+        self.network = nets.AtariControlNet(
             screen_dimensions=feature_screen_size,
             learning_rate=learning_rate,
             value_gradient_strength=value_gradient_strength,
@@ -93,11 +93,14 @@ class A2CAtariSimplified(base_agent.BaseAgent):
         self.episodes += 1
         self.steps = 0
         self.reward = 0
+        self.count = 0
+        self._marine_selected = False
+        self.args_to_use = 0
 
         if self.training:
             self.last_action = None
             self.state_buffer = deque(maxlen=self.trajectory_training_steps)
-            self.args_buffer = deque(maxlen=self.trajectory_training_steps)
+            self.action_buffer = deque(maxlen=self.trajectory_training_steps)
             self.reward_buffer = deque(maxlen=self.trajectory_training_steps)
             self.glob_ep = self.network.global_episode.eval(session=self.sess)
             print("Global training episode:", self.glob_ep + 1)
@@ -119,29 +122,44 @@ class A2CAtariSimplified(base_agent.BaseAgent):
 
 
         # sample action (function identifier and arguments) from policy
-        args = self._sample_action(
+        args1, args2 = self._sample_action(
             screen_features,
             available_actions)
-
-
-        if (self.steps == 1):
-            return FUNCTIONS.select_army("select")
 
         # train model
         if self.training:
             if self.last_action:
                 # most recent steps on the left of the deques
                 self.state_buffer.appendleft((screen_features))
+                self.action_buffer.appendleft(self.last_action)
                 self.reward_buffer.appendleft(obs.reward)
-                self.args_buffer.appendleft(args)
 
             # cut trajectory and train model
             if self.steps % self.trajectory_training_steps == 0:
                 self._train_network()
 
-            self.last_action = args
+            self.last_action = (args1, args2)
 
-        return FUNCTIONS.Attack_screen("now", args)
+
+        marines = [unit for unit in obs.observation.feature_units
+               if unit.alliance == _PLAYER_SELF]
+        if not marines:
+            return FUNCTIONS.no_op()
+        marine_unit = next((m for m in marines if m.is_selected == self._marine_selected), marines[0])
+        marine_xy = [marine_unit.x, marine_unit.y]
+
+        if not marine_unit.is_selected:
+        # Nothing selected or the wrong marine is selected.
+            self._marine_selected = True
+            return FUNCTIONS.select_point("select", marine_xy)
+
+        self._marine_selected = False
+        if (self.args_to_use == 1):
+            self.args_to_use = 1 - self.args_to_use
+            return FUNCTIONS.Move_screen("now", args1)
+        else:
+            self.args_to_use = 1 - self.args_to_use
+            return FUNCTIONS.Move_screen("now", args2)
 
     def _sample_action(self,
                        screen_features,
@@ -154,26 +172,45 @@ class A2CAtariSimplified(base_agent.BaseAgent):
 
         # sample function arguments
 
-        x_policy = self.sess.run(
-                    self.network.x,
+        x1_policy = self.sess.run(
+                    self.network.x1,
                     feed_dict=feed_dict)
 
-        y_policy = self.sess.run(
-                    self.network.y,
+        y1_policy = self.sess.run(
+                    self.network.y1,
                     feed_dict=feed_dict)
 
-        x_policy = np.squeeze(x_policy)
-        x_ids = np.arange(len(x_policy))
-        x = np.random.choice(x_ids, p=x_policy)
+        x1_policy = np.squeeze(x1_policy)
+        x1_ids = np.arange(len(x1_policy))
+        x1 = np.random.choice(x1_ids, p=x1_policy)
 
-        y_policy = np.squeeze(y_policy)
-        y_ids = np.arange(len(y_policy))
-        y = np.random.choice(y_ids, p=y_policy)
-        args = (x, y)
+        y1_policy = np.squeeze(y1_policy)
+        y1_ids = np.arange(len(y1_policy))
+        y1 = np.random.choice(y1_ids, p=y1_policy)
+        args1 = (x1, y1)
+
+
+
+        x2_policy = self.sess.run(
+                    self.network.x2,
+                    feed_dict=feed_dict)
+
+        y2_policy = self.sess.run(
+                    self.network.y2,
+                    feed_dict=feed_dict)
+
+        x2_policy = np.squeeze(x2_policy)
+        x2_ids = np.arange(len(x2_policy))
+        x2 = np.random.choice(x2_ids, p=x2_policy)
+
+        y2_policy = np.squeeze(y2_policy)
+        y2_ids = np.arange(len(y2_policy))
+        y2 = np.random.choice(y2_ids, p=y2_policy)
+        args2 = (x2, y2)
 
 
         #print("CHOSEN ACTION: ", str(action_id), str(args))
-        return args
+        return args1, args2
 
     def _handle_episode_end(self):
         """Save weights and write summaries."""
@@ -205,9 +242,13 @@ class A2CAtariSimplified(base_agent.BaseAgent):
         # state
         screen = [each for each in self.state_buffer]
 
-        args = [i for i in self.args_buffer]
-        x = np.eye(84)[[a[0] for a in args]]
-        y = np.eye(84)[[a[1] for a in args]]
+        args1 = [each[0] for each in self.action_buffer]
+        args2 = [each[1] for each in self.action_buffer]
+        x1 = np.eye(84)[[a[0] for a in args1]]
+        y1 = np.eye(84)[[a[1] for a in args1]]
+
+        x2 = np.eye(84)[[a[0] for a in args2]]
+        y2 = np.eye(84)[[a[1] for a in args2]]
 
         # calculate discounted rewards
         raw_rewards = list(self.reward_buffer)
@@ -226,7 +267,9 @@ class A2CAtariSimplified(base_agent.BaseAgent):
 
         feed_dict = {self.network.screen_features: screen,
                      self.network.returns: returns,
-                     self.network.arg_placeholder_x : x,
-                     self.network.arg_placeholder_y : y}
+                     self.network.arg_placeholder_x1 : x1,
+                     self.network.arg_placeholder_y1 : y1,
+                     self.network.arg_placeholder_x2 : x2,
+                     self.network.arg_placeholder_y2 : y2}
 
         return feed_dict
