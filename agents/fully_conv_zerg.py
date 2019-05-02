@@ -71,8 +71,8 @@ class FullyConvAgent(base_agent.BaseAgent):
                  training=FLAGS.training,
                  indicate_nonrandom_action=FLAGS.indicate_nonrandom_action,
                  save_dir="./checkpoints/",
-                 ckpt_name="DQNFullyConvMoveOnly",
-                 summary_path="./tensorboard/DQNfullyconv"):
+                 ckpt_name="DQNFullyConvZergs",
+                 summary_path="./tensorboard/DQNfullyconvzergs"):
         """Initialize rewards/episodes/steps, build network."""
         super(FullyConvAgent, self).__init__()
 
@@ -114,7 +114,7 @@ class FullyConvAgent(base_agent.BaseAgent):
             self.target_net = nets.FullyConvNetZerg(
                 spatial_dimensions=feature_screen_size,
                 learning_rate=self.learning_rate,
-                name="DQNFullyConvTarget")
+                name="DQNFullyConvZergsTarget")
 
             # initialize Experience Replay memory buffer
             self.memory = Memory(max_memory)
@@ -221,9 +221,9 @@ class FullyConvAgent(base_agent.BaseAgent):
 
     def _update_target_network(self):
         online_vars = tf.get_collection(
-            tf.GraphKeys.TRAINABLE_VARIABLES, "fullyconv")
+            tf.GraphKeys.TRAINABLE_VARIABLES, "fullyconvzergs")
         target_vars = tf.get_collection(
-            tf.GraphKeys.TRAINABLE_VARIABLES, "DQNFullyConvTarget")
+            tf.GraphKeys.TRAINABLE_VARIABLES, "DQNFullyConvZergsTarget")
 
         update_op = []
         for online_var, target_var in zip(online_vars, target_vars):
