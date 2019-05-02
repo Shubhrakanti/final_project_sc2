@@ -7,7 +7,7 @@ import tensorflow as tf
 import agents.networks.value_estimators as nets
 
 from absl import flags
-
+ 
 from collections import deque
 
 from pysc2.agents import base_agent
@@ -48,8 +48,9 @@ class Memory(object):
         """Interface to access buffer length."""
         return len(self.buffer)
 
-class FullyConvAgent(base_agent.BaseAgent):
-    """A fully convolutional DQN that receives `player_relative` features and takes movements."""
+
+class DQNStackedFrames(base_agent.BaseAgent):
+    """A DQN that receives `player_relative` features and takes movements."""
 
     def __init__(self,
                  learning_rate=FLAGS.learning_rate,
@@ -61,13 +62,14 @@ class FullyConvAgent(base_agent.BaseAgent):
                  target_update_frequency=FLAGS.target_update_frequency,
                  max_memory=FLAGS.max_memory,
                  batch_size=FLAGS.batch_size,
+                 sequence_length=FLAGS.sequence_length,
                  training=FLAGS.training,
                  indicate_nonrandom_action=FLAGS.indicate_nonrandom_action,
-                 save_dir="./checkpoint_DQNFullyConvMoveOnly2/",
-                 ckpt_name="DQNFullyConvMoveOnly2",
-                 summary_path="./tensorboard/DQNfullyconv2"):
+                 save_dir="./checkpoints/",
+                 ckpt_name="DQNStackedFrames",
+                 summary_path="./tensorboard/dqnstacked"):
         """Initialize rewards/episodes/steps, build network."""
-        super(FullyConvAgent, self).__init__()
+        super(DQNStackedFrames, self).__init__()
 
         # saving and summary writing
         if FLAGS.save_dir:
@@ -80,6 +82,7 @@ class FullyConvAgent(base_agent.BaseAgent):
         # neural net hyperparameters
         self.learning_rate = learning_rate
         self.discount_factor = discount_factor
+        self.sequence_length = sequence_length
 
         # agent hyperparameters
         self.epsilon_max = epsilon_max
@@ -94,20 +97,21 @@ class FullyConvAgent(base_agent.BaseAgent):
 
         # build network
         self.save_path = save_dir + ckpt_name + ".ckpt"
-
         print("Building models...")
         tf.reset_default_graph()
-        self.network = nets.FullyConvNet(
+        self.network = nets.PlayerRelativeMovementCNNStackedFrames(
             spatial_dimensions=feature_screen_size,
             learning_rate=self.learning_rate,
+            sequence_length=self.sequence_length,
             save_path=self.save_path,
             summary_path=summary_path)
 
         if self.training:
-            self.target_net = nets.FullyConvNet(
+            self.target_net = nets.PlayerRelativeMovementCNNStackedFrames(
                 spatial_dimensions=feature_screen_size,
                 learning_rate=self.learning_rate,
-                name="DQNFullyConvTarget")
+                sequence_length=self.sequence_length,
+                name="DQNTarget")
 
             # initialize Experience Replay memory buffer
             self.memory = Memory(max_memory)
@@ -133,8 +137,9 @@ class FullyConvAgent(base_agent.BaseAgent):
         self.reward = 0
 
         if self.training:
-            self.last_state = None
+            self.last_state = deque([np.zeros(feature_screen_size, dtype=np.int) for i in range(self.sequence_length)], maxlen=self.sequence_length)
             self.last_action = None
+
             episode = self.network.global_episode.eval(session=self.sess)
             print("Global training episode:", episode + 1)
 
@@ -148,11 +153,13 @@ class FullyConvAgent(base_agent.BaseAgent):
             self._handle_episode_end()
 
         if FUNCTIONS.Move_screen.id in obs.observation.available_actions:
-            screen = obs.observation.feature_screen.player_relative
+            state = obs.observation.feature_screen.player_relative
+            new_state = self.last_state.copy()
+            new_state.append(state)
 
             if self.training:
                 # predict an action to take and take it
-                x, y, action = self._epsilon_greedy_action_selection(screen)
+                x, y, action = self._epsilon_greedy_action_selection(new_state)
 
                 # update online DQN
                 if (self.steps % self.train_frequency == 0 and
@@ -165,21 +172,21 @@ class FullyConvAgent(base_agent.BaseAgent):
                     print("Target network updated.")
 
                 # add experience to memory
-                if self.last_state is not None:
+                if self.last_action is not None:
                     self.memory.add(
                         (self.last_state,
                          self.last_action,
                          obs.reward,
-                         screen))
+                         new_state))
 
-                self.last_state = screen
+                self.last_state = new_state
                 self.last_action = np.ravel_multi_index(
                     (x, y),
                     feature_screen_size)
 
             else:
                 x, y, action = self._epsilon_greedy_action_selection(
-                    screen,
+                    new_state,
                     self.epsilon_min)
 
             if self.indicate_nonrandom_action and action == "nonrandom":
@@ -189,8 +196,6 @@ class FullyConvAgent(base_agent.BaseAgent):
                 return FUNCTIONS.Move_screen("now", (x, y))
         else:
             return FUNCTIONS.select_army("select")
-            #rint(obs.observation.available_actions)
-            #return FUNCTIONS.select_rect("select", [np.random.randint(0, 85), np.random.randint(0, 85)], [np.random.randint(0, 85), np.random.randint(0, 85)])
 
     def _handle_episode_end(self):
         """Save weights and write summaries."""
@@ -213,9 +218,9 @@ class FullyConvAgent(base_agent.BaseAgent):
 
     def _update_target_network(self):
         online_vars = tf.get_collection(
-            tf.GraphKeys.TRAINABLE_VARIABLES, "fullyconv")
+            tf.GraphKeys.TRAINABLE_VARIABLES, "DQN")
         target_vars = tf.get_collection(
-            tf.GraphKeys.TRAINABLE_VARIABLES, "DQNFullyConvTarget")
+            tf.GraphKeys.TRAINABLE_VARIABLES, "DQNTarget")
 
         update_op = []
         for online_var, target_var in zip(online_vars, target_vars):
@@ -243,8 +248,8 @@ class FullyConvAgent(base_agent.BaseAgent):
             inputs = np.expand_dims(state, 0)
 
             q_values = self.sess.run(
-                    self.network.spatial_flatten,
-                    feed_dict={self.network.inputs: inputs})
+                self.network.flatten,
+                feed_dict={self.network.inputs: inputs})
 
             max_index = np.argmax(q_values)
             x, y = np.unravel_index(max_index, feature_screen_size)
@@ -266,7 +271,7 @@ class FullyConvAgent(base_agent.BaseAgent):
 
         # get targets
         next_outputs = self.sess.run(
-            self.target_net.spatial_output,
+            self.target_net.output,
             feed_dict={self.target_net.inputs: next_states})
 
         targets = [rewards[i] + self.discount_factor * np.max(next_outputs[i])

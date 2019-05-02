@@ -63,9 +63,9 @@ class FullyConvAgent(base_agent.BaseAgent):
                  batch_size=FLAGS.batch_size,
                  training=FLAGS.training,
                  indicate_nonrandom_action=FLAGS.indicate_nonrandom_action,
-                 save_dir="./checkpoint_DQNFullyConvMoveOnly2/",
-                 ckpt_name="DQNFullyConvMoveOnly2",
-                 summary_path="./tensorboard/DQNfullyconv2"):
+                 save_dir="./checkpoints/",
+                 ckpt_name="DQNFullyConvMoveOnly",
+                 summary_path="./tensorboard/DQNfullyconv"):
         """Initialize rewards/episodes/steps, build network."""
         super(FullyConvAgent, self).__init__()
 
