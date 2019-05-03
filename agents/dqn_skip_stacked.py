@@ -7,7 +7,7 @@ import tensorflow as tf
 import agents.networks.value_estimators as nets
 
 from absl import flags
-
+ 
 from collections import deque
 
 from pysc2.agents import base_agent
@@ -49,7 +49,7 @@ class Memory(object):
         return len(self.buffer)
 
 
-class DQNMoveOnlySkipFrames(base_agent.BaseAgent):
+class DQNSkipStacked(base_agent.BaseAgent):
     """A DQN that receives `player_relative` features and takes movements."""
 
     def __init__(self,
@@ -58,18 +58,19 @@ class DQNMoveOnlySkipFrames(base_agent.BaseAgent):
                  epsilon_max=FLAGS.epsilon_max,
                  epsilon_min=FLAGS.epsilon_min,
                  epsilon_decay_steps=FLAGS.epsilon_decay_steps,
-                 skip_frames = FLAGS.skip_frames,
                  train_frequency=FLAGS.train_frequency,
+                 skip_frames = FLAGS.skip_frames,
                  target_update_frequency=FLAGS.target_update_frequency,
                  max_memory=FLAGS.max_memory,
                  batch_size=FLAGS.batch_size,
+                 sequence_length=FLAGS.sequence_length,
                  training=FLAGS.training,
                  indicate_nonrandom_action=FLAGS.indicate_nonrandom_action,
                  save_dir="./checkpoints/",
-                 ckpt_name="DQNMoveOnlySkip",
-                 summary_path="./tensorboard/deepqskip"):
+                 ckpt_name="DQNStackedFrames",
+                 summary_path="./tensorboard/dqnstacked"):
         """Initialize rewards/episodes/steps, build network."""
-        super(DQNMoveOnlySkipFrames, self).__init__()
+        super(DQNSkipStacked, self).__init__()
 
         # saving and summary writing
         if FLAGS.save_dir:
@@ -82,6 +83,7 @@ class DQNMoveOnlySkipFrames(base_agent.BaseAgent):
         # neural net hyperparameters
         self.learning_rate = learning_rate
         self.discount_factor = discount_factor
+        self.sequence_length = sequence_length
         self.skip_frames = skip_frames
 
         # agent hyperparameters
@@ -99,17 +101,19 @@ class DQNMoveOnlySkipFrames(base_agent.BaseAgent):
         self.save_path = save_dir + ckpt_name + ".ckpt"
         print("Building models...")
         tf.reset_default_graph()
-        self.network = nets.PlayerRelativeMovementCNN(
+        self.network = nets.PlayerRelativeMovementCNNStackedFrames(
             spatial_dimensions=feature_screen_size,
             learning_rate=self.learning_rate,
+            sequence_length=self.sequence_length,
+            name="DQNSkip",
             save_path=self.save_path,
-            summary_path=summary_path,
-            name="DQNSkip")
+            summary_path=summary_path)
 
         if self.training:
-            self.target_net = nets.PlayerRelativeMovementCNN(
+            self.target_net = nets.PlayerRelativeMovementCNNStackedFrames(
                 spatial_dimensions=feature_screen_size,
                 learning_rate=self.learning_rate,
+                sequence_length=self.sequence_length,
                 name="DQNSkipTarget")
 
             # initialize Experience Replay memory buffer
@@ -138,7 +142,7 @@ class DQNMoveOnlySkipFrames(base_agent.BaseAgent):
         self.skipped_frames = 0
 
         if self.training:
-            self.last_state = None
+            self.last_state = deque([np.zeros(feature_screen_size, dtype=np.int) for i in range(self.sequence_length)], maxlen=self.sequence_length)
             self.last_action = None
 
             episode = self.network.global_episode.eval(session=self.sess)
@@ -164,13 +168,14 @@ class DQNMoveOnlySkipFrames(base_agent.BaseAgent):
             x, y = np.unravel_index(np.array(self.last_action), (84, 84))
             return FUNCTIONS.Attack_screen("now", (x, y))
 
-
         if FUNCTIONS.Move_screen.id in obs.observation.available_actions:
             state = obs.observation.feature_screen.player_relative
+            new_state = self.last_state.copy()
+            new_state.append(state)
 
             if self.training:
                 # predict an action to take and take it
-                x, y, action = self._epsilon_greedy_action_selection(state)
+                x, y, action = self._epsilon_greedy_action_selection(new_state)
 
                 # update online DQN
                 if (self.steps % self.train_frequency == 0 and
@@ -183,22 +188,23 @@ class DQNMoveOnlySkipFrames(base_agent.BaseAgent):
                     print("Target network updated.")
 
                 # add experience to memory
-                if self.last_state is not None:
+                if self.last_action is not None:
                     self.memory.add(
                         (self.last_state,
                          self.last_action,
                          obs.reward + self.skipped_rewards_sum,
-                         state))
+                         new_state))
 
-                self.last_state = state
+                self.last_state = new_state
                 self.last_action = np.ravel_multi_index(
                     (x, y),
                     feature_screen_size)
 
             else:
                 x, y, action = self._epsilon_greedy_action_selection(
-                    state,
+                    new_state,
                     self.epsilon_min)
+
 
         if (self.skipped_frames == self.skip_frames):
             self.skipped_frames = 0
@@ -233,9 +239,9 @@ class DQNMoveOnlySkipFrames(base_agent.BaseAgent):
 
     def _update_target_network(self):
         online_vars = tf.get_collection(
-            tf.GraphKeys.TRAINABLE_VARIABLES, "DQNSkip")
+            tf.GraphKeys.TRAINABLE_VARIABLES, "DQN")
         target_vars = tf.get_collection(
-            tf.GraphKeys.TRAINABLE_VARIABLES, "DQNSkipTarget")
+            tf.GraphKeys.TRAINABLE_VARIABLES, "DQNTarget")
 
         update_op = []
         for online_var, target_var in zip(online_vars, target_vars):
