@@ -141,7 +141,7 @@ class A2CAtariSimplified(base_agent.BaseAgent):
 
             self.last_action = args
 
-        return FUNCTIONS.Attack_screen("now", args)
+        return FUNCTIONS.Move_screen("now", args)
 
     def _sample_action(self,
                        screen_features,
