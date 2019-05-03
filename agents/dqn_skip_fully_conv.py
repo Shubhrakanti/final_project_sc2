@@ -49,7 +49,7 @@ class Memory(object):
         return len(self.buffer)
 
 
-class DQNMoveOnlySkipFrames(base_agent.BaseAgent):
+class DQNSkipFullyConv(base_agent.BaseAgent):
     """A DQN that receives `player_relative` features and takes movements."""
 
     def __init__(self,
@@ -66,10 +66,10 @@ class DQNMoveOnlySkipFrames(base_agent.BaseAgent):
                  training=FLAGS.training,
                  indicate_nonrandom_action=FLAGS.indicate_nonrandom_action,
                  save_dir="./checkpoints/",
-                 ckpt_name="DQNMoveOnlySkip",
-                 summary_path="./tensorboard/deepqskip"):
+                 ckpt_name="DQNSkipFullyConv",
+                 summary_path="./tensorboard/deepqskipfullyconv"):
         """Initialize rewards/episodes/steps, build network."""
-        super(DQNMoveOnlySkipFrames, self).__init__()
+        super(DQNSkipFullyConv, self).__init__()
 
         # saving and summary writing
         if FLAGS.save_dir:
@@ -99,18 +99,18 @@ class DQNMoveOnlySkipFrames(base_agent.BaseAgent):
         self.save_path = save_dir + ckpt_name + ".ckpt"
         print("Building models...")
         tf.reset_default_graph()
-        self.network = nets.PlayerRelativeMovementCNN(
+        self.network = nets.FullyConvNet(
             spatial_dimensions=feature_screen_size,
             learning_rate=self.learning_rate,
             save_path=self.save_path,
             summary_path=summary_path,
-            name="DQNSkip")
+            name="DQNSkipFC")
 
         if self.training:
-            self.target_net = nets.PlayerRelativeMovementCNN(
+            self.target_net = nets.FullyConvNet(
                 spatial_dimensions=feature_screen_size,
                 learning_rate=self.learning_rate,
-                name="DQNSkipTarget")
+                name="DQNSkipTargetFC")
 
             # initialize Experience Replay memory buffer
             self.memory = Memory(max_memory)
@@ -286,7 +286,7 @@ class DQNMoveOnlySkipFrames(base_agent.BaseAgent):
 
         # get targets
         next_outputs = self.sess.run(
-            self.target_net.output,
+            self.target_net.spatial_output,
             feed_dict={self.target_net.inputs: next_states})
 
         targets = [rewards[i] + self.discount_factor * np.max(next_outputs[i])
