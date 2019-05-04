@@ -263,13 +263,13 @@ class FullyConvAgent(base_agent.BaseAgent):
             attack_max_index = np.argmax(q_values_attack)
 
             
-            if move_max_index<attack_max_index:
-                action = "Attack"
-                x, y = np.unravel_index(attack_max_index, feature_screen_size)
+#            if move_max_index<attack_max_index:
+            action = "Attack"
+            x, y = np.unravel_index(attack_max_index, feature_screen_size)
 
-            else:
-                action = "None"
-                x, y = np.unravel_index(move_max_index, feature_screen_size)
+#            else:
+#                action = "None"
+#                x, y = np.unravel_index(move_max_index, feature_screen_size)
 
             return x, y , action, "nonrandom"
 
@@ -295,8 +295,8 @@ class FullyConvAgent(base_agent.BaseAgent):
         next_outputs_attack = self.sess.run(
                     self.target_net.spatial_output_attack,
                     feed_dict={self.target_net.inputs: next_states})
-        next_outputs = next_outputs_move+next_outputs_attack
-        targets = [rewards[i] + self.discount_factor * np.max(next_outputs[i])
+#        next_outputs = ((next_outputs_move+next_outputs_attack)/2
+        targets = [rewards[i] + self.discount_factor * np.max(next_outputs_attack[i])
                    for i in range(self.batch_size)]
 
         return states, actions, targets
