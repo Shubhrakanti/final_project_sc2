@@ -193,6 +193,7 @@ class FullyConvAgent(base_agent.BaseAgent):
                 return FUNCTIONS.Attack_screen("now", (x, y))
             else:
                 if action== "Attack":
+                    print("ATTACKING here")
                     return FUNCTIONS.Attack_screen("now", (x, y))
                 return FUNCTIONS.Move_screen("now", (x, y))
         else:
