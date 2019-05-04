@@ -86,11 +86,11 @@ flags.DEFINE_string("summary_path", None, "Where to write tensorboard summaries.
 # DQNMoveOnly
 flags.DEFINE_float("epsilon_max", 1.0, "Maximum exploration probability.")
 flags.DEFINE_float("epsilon_min", 0.01, "Minimum exploration probability.")
-flags.DEFINE_integer("epsilon_decay_steps", 10000, "Linear epsilon decay steps.")
+flags.DEFINE_integer("epsilon_decay_steps", 20000, "Linear epsilon decay steps.")
 flags.DEFINE_integer("train_frequency", 1, "How often to train network.")
 flags.DEFINE_integer("target_update_frequency", 500, "How often to update target network.")
 flags.DEFINE_integer("max_memory", 10000, "Experience replay buffer capacity.")
-flags.DEFINE_integer("batch_size", 16, "Training batch size.")
+flags.DEFINE_integer("batch_size", 32, "Training batch size.")
 flags.DEFINE_bool("indicate_nonrandom_action", False, "Show nonrandom actions.")
 
 # Fully conv / conv-lstm

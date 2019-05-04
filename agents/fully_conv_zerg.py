@@ -71,8 +71,8 @@ class FullyConvAgent(base_agent.BaseAgent):
                  training=FLAGS.training,
                  indicate_nonrandom_action=FLAGS.indicate_nonrandom_action,
                  save_dir="./checkpoints/",
-                 ckpt_name="DQNfullyconvzergsTRAIL2",
-                 summary_path="./tensorboard/DQNfullyconvzergsTRAIL2"):
+                 ckpt_name="DQNfullyconvzergsTRAIL3",
+                 summary_path="./tensorboard/DQNfullyconvzergsTRAIL3Increased_eps_decay_and_batch"):
         """Initialize rewards/episodes/steps, build network."""
         super(FullyConvAgent, self).__init__()
 
