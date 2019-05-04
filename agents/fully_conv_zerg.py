@@ -71,8 +71,8 @@ class FullyConvAgent(base_agent.BaseAgent):
                  training=FLAGS.training,
                  indicate_nonrandom_action=FLAGS.indicate_nonrandom_action,
                  save_dir="./checkpoints/",
-                 ckpt_name="DQNFullyConvZergs",
-                 summary_path="./tensorboard/DQNfullyconvzergs"):
+                 ckpt_name="DQNfullyconvzergsTRAIL2",
+                 summary_path="./tensorboard/DQNfullyconvzergsTRAIL2"):
         """Initialize rewards/episodes/steps, build network."""
         super(FullyConvAgent, self).__init__()
 
@@ -193,11 +193,13 @@ class FullyConvAgent(base_agent.BaseAgent):
                 return FUNCTIONS.Attack_screen("now", (x, y))
             else:
                 if action== "Attack":
-                    print("ATTACKING here")
                     return FUNCTIONS.Attack_screen("now", (x, y))
                 return FUNCTIONS.Move_screen("now", (x, y))
         else:
-            return FUNCTIONS.select_army("select")
+            if FUNCTIONS.select_army.id in obs.observation.available_actions:
+                return FUNCTIONS.select_army("select")
+            else:
+                return FUNCTIONS.no_op()
             #rint(obs.observation.available_actions)
             #return FUNCTIONS.select_rect("select", [np.random.randint(0, 85), np.random.randint(0, 85)], [np.random.randint(0, 85), np.random.randint(0, 85)])
 
