@@ -13,6 +13,10 @@ from collections import deque
 from pysc2.agents import base_agent
 from pysc2.lib import actions as sc2_actions
 
+_PLAYER_SELF = features.PlayerRelative.SELF
+_PLAYER_NEUTRAL = features.PlayerRelative.NEUTRAL  # beacon/minerals
+_PLAYER_ENEMY = features.PlayerRelative.ENEMY
+
 FLAGS = flags.FLAGS
 
 # agent interface settings (defaults specified in pysc2.bin.agent)

@@ -251,7 +251,7 @@ class DQNMoveOnly(base_agent.BaseAgent):
 
     def _train_network(self):
         states, actions, targets = self._get_batch()
-        self.network.optimizer_op(self.sess, states, actions, targets)
+        self.network.optimizer_op(self.sess, states, actions, targets, marine)
 
     def _get_batch(self):
         batch = self.memory.sample(self.batch_size)
