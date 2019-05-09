@@ -1175,7 +1175,9 @@ class PlayerRelativeMovementCNNSeparateOutputs(object):
                 padding="SAME",
                 name="output")
 
-            self.output = tf.layers.flatten(self.out, name="flat")
+            self.output = tf.reshape(self.out, [-1, *self.spatial_dimensions])
+            self.output = tf.layers.flatten(self.output, name="flat")
+            self.output = tf.reshape(self.output, [-1, 2, 7056])
 
             # value estimate trackers for summaries
             self.max_q = tf.reduce_max(self.output, name="max")

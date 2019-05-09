@@ -289,6 +289,7 @@ class DQNSeperate(base_agent.BaseAgent):
                 feed_dict={self.network.inputs: inputs})
 
             max_index = np.argmax(q_values, axis = 1)
+            print(max_index.shape)
             if (marine == 0):
                 max_index = max_index[0]
             else:
