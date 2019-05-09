@@ -298,10 +298,6 @@ class DQNSeperate(base_agent.BaseAgent):
 
     def _handle_episode_end(self):
         """Save weights and write summaries."""
-        # train network
-        feed_dict = self._train_network(terminal=True)
-
-        # increment global training episode
         self.network.increment_global_episode_op(self.sess)
 
         # save current model
@@ -309,8 +305,9 @@ class DQNSeperate(base_agent.BaseAgent):
         print("Model Saved")
 
         # write summaries from last episode
+        states, actions, targets = self._get_batch()
         self.network.write_summary(
-            self.sess, self.glob_ep, self.reward, feed_dict)
+            self.sess, states, actions, targets, self.reward1 + self.reward2)
         print("Summary Written")
 
     def _tf_init_op(self):
