@@ -70,8 +70,8 @@ class DQN(base_agent.BaseAgent):
                  training=FLAGS.training,
                  indicate_nonrandom_action=FLAGS.indicate_nonrandom_action,
                  save_dir="./checkpoints/",
-                 ckpt_name="DQNShared",
-                 summary_path="./tensorboard/deepqshared"):
+                 ckpt_name="",
+                 summary_path="./tensorboard/deepqsharedNICE"):
         """Initialize rewards/episodes/steps, build network."""
         super(DQN, self).__init__()
 
@@ -258,8 +258,9 @@ class DQN(base_agent.BaseAgent):
                 feed_dict={self.network.inputs: inputs})
 
             #max_index = np.argmax(q_values)
-            dist = tf.distributions.Categorical(tf.softmax(q_values))
-            x, y = np.unravel_index(dist.sample(), feature_screen_size)
+            dist = tf.distributions.Categorical(tf.nn.softmax(q_values))
+            debug_dist = np.array(self.sess.run(dist.sample())).astype(np.int32)
+            x, y = np.unravel_index(debug_dist, feature_screen_size)
             return x, y, "nonrandom"
 
     def _train_network(self):
@@ -274,7 +275,7 @@ class DQN(base_agent.BaseAgent):
         next_states = np.array([each[3] for each in batch])
 
         # one-hot encode actions
-        actions = np.eye(np.prod(feature_screen_size))[actions]
+        actions = np.eye(np.prod(feature_screen_size))[np.array(actions).astype(np.int32)]
 
         # get targets
         next_outputs = self.sess.run(
